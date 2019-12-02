@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r loading packages}
 
+#onehot encoding
 library(data.table) 
 library(mltools)
 
@@ -24,11 +25,12 @@ train <- read.csv("../Data/train.csv")
 
 ```{r splitting into X and y}
 
-#reshaping X into shape (n_pixels, n_examples), as it was previously (n_examples, n_pixels)
+#reshaping X into shape (n_pixels, n_examples), it was previously (n_examples, n_pixels)
 X <- t(as.matrix(train[,-1]))/255
 X <- matrix(X, 784, 42000)
 
 #one hot encoding y as there are 10 possible classes (digits) and our output layer will contain 10 units, also reshaping to be (n_classes, n_examples)
+#only time a package is used
 y <- data.table(train[,1])
 y$V1 <- as.factor(y$V1)
 y <- one_hot(y, cols = "V1")
@@ -48,6 +50,7 @@ initialize_parameters <- function(n_x, n_h, n_y) {
   #n_h - size of hidden layer (n_units)
   #n_y - size of output layer (n_classes)
   
+  #randomly initializing weight matrices using uniform distribution and bias vectors as zero vectors
   W1 <- matrix(runif(n_h * n_x), n_h, n_x)*.01
   b1 <- as.vector(rep(0, n_h))
   W2 <- matrix(runif(n_y * n_h), n_y, n_h)*.01
@@ -58,6 +61,7 @@ initialize_parameters <- function(n_x, n_h, n_y) {
   #W2 - weight matrix of shape (n_y, n_h)
   #b2 - bias vector of shape (n_y, 1)
   
+  #combining parameters into a list
   parameters <- list("W1" = W1,
                      "b1" = b1,
                      "W2" = W2,
@@ -73,14 +77,17 @@ initialize_parameters <- function(n_x, n_h, n_y) {
 
 linear_fwd <- function(A, W, b) {
   
-  #A -- activations from previous layer (or input data): (size of previous layer, number of examples)
-  #W -- weights matrix: numpy array of shape (size of current layer, size of previous layer)
-  #b -- bias vector, numpy array of shape (size of the current layer, 1)
+  #A -- input (activations) from previous layer (or input data): (size of previous layer, number of examples)
+  #W -- weights matrix of shape (size of current layer, size of previous layer)
+  #b -- bias vector of shape (size of the current layer, 1)
   
+  #creating matrix Z of shape (size of previous layer, number of examples) (linear component of NN)
   Z <- matrix((W %*% A) + b, dim(W)[1], dim(A)[2])
   
+  #saving cache to make back propogation more efficient
   cache <- list(A, W, b)
   
+  #saving Z and cache into a list as R does not allow functions to return multiple variables
   Z_and_cache <- list("Z" = Z,
                  "cache" = cache)
   
@@ -94,8 +101,10 @@ linear_fwd <- function(A, W, b) {
 
 sigmoid <- function(Z) {
   
+  #sigmoid function
   sig <- 1/(1+exp(-Z))
   
+  #saving cache to make backpropogation more efficient
   sig_and_cache <- list("A" = sig,
                         "cache" = Z)
   
@@ -105,8 +114,10 @@ sigmoid <- function(Z) {
 
 relu_func <- function(Z) {
   
+  #rectified linear unit function
   relu <- pmax(Z, 0) 
   
+  #saving cache to make backpropogation more efficient
   relu_and_cache <- list("A" = relu,
                          "cache" = Z)
   
@@ -120,6 +131,7 @@ relu_func <- function(Z) {
 
 linear_activation_fwd <- function(A_prev, W, b, activation) {
   
+  #applying linear and sigmoid/relu functions to activations
   if(activation == "sigmoid") {
     Z_and_cache <- linear_fwd(A_prev, W, b)
     A_and_cache <- sigmoid(Z_and_cache[["Z"]])
@@ -139,6 +151,7 @@ linear_activation_fwd <- function(A_prev, W, b, activation) {
 
 cost_func <- function(AL, Y) {
   
+  #cost function
   m <- dim(Y)[2]
   logprobs <- (log(AL) * Y) + (log(1-AL) * (1-Y))
   cost <- -1/m*sum(logprobs)
@@ -153,15 +166,18 @@ cost_func <- function(AL, Y) {
 
 linear_backward <- function(dZ, A_and_cache) {
   
+  #extracting things from cache
   A_prev <- A_and_cache[[1]]
   W <- A_and_cache[[2]]
   b <- A_and_cache[[3]]
   m <- dim(A_prev)[2]
   
+  #taking derivitives
   dW <- 1/m*(dZ %*% t(A_prev))
   db <- 1/m*sum(dZ)
   dA_prev <- t(W) %*% dZ
 
+  #saving gradients  
   gradients <- list("dA_prev" = dA_prev,
                     "dW" = dW,
                     "db" = db)
@@ -176,6 +192,7 @@ linear_backward <- function(dZ, A_and_cache) {
 
 sigmoid_backward <- function(dA, cache) {
   
+  #sigmoid derivative
   Z <- cache
   s = 1/(1+exp(-Z))
   dZ = dA * s * (1-s)
@@ -186,6 +203,7 @@ sigmoid_backward <- function(dA, cache) {
 
 relu_backward <- function(dA, cache) {
   
+  #relu derivative
   Z <- cache
   dZ <- dA
   
@@ -201,9 +219,11 @@ relu_backward <- function(dA, cache) {
 
 linear_activation_back <- function(dA, A_and_cache, activation) {
   
+  #extracting caches
   linear_cache <- A_and_cache[["linear_cache"]]
   activation_cache <- A_and_cache[["activation_cache"]]
   
+  #gradient descent
   if(activation == "relu") {
     
     dZ <- relu_backward(dA, activation_cache)
@@ -226,6 +246,7 @@ linear_activation_back <- function(dA, A_and_cache, activation) {
 
 update_parameters <- function(parameters, l1_gradients, l2_gradients, learning_rate) {
   
+  #updating parameters using learning rate and gradients
   parameters[["W1"]] <- parameters[["W1"]] - (learning_rate * l1_gradients[[2]])
   parameters[["b1"]] <- parameters[["b1"]] - (learning_rate * l1_gradients[[3]])
   parameters[["W2"]] <- parameters[["W2"]] - (learning_rate * l2_gradients[[2]])
@@ -244,6 +265,7 @@ n_x <- 784
 n_h <- 32
 n_y <- 10
 
+#saving constants to a list
 layers_dimensions <- list("n_x" = n_x,
                           "n_h" = n_h,
                           "n_y" = n_y)
@@ -293,7 +315,7 @@ two_layer_model <- function(X, Y, layers_dimensions, learning_rate = .0075, num_
 
 ```
 
-current issue is in computing the cost, because taking the log of 0 returns -Inf, also with initial weights and biases, the network is predicting that every example is every single number because relu is feeding into sigmoid and outputting all ones
+
 
 ```{r running model}
 
@@ -301,113 +323,30 @@ parameters <- two_layer_model(X, y, layers_dimensions, .0075, 3000, TRUE)
 
 ```
 
-```{r storing state of neural network}
+```{r testing NN}
 
-rand_vector <- runif(ncol(X) * nrow(X))
-
-rand_matrix <- matrix(
-  rand_vector,
-  nrow = ncol(X),
-  ncol = nrow(X),
-  byrow = TRUE
-)
-
-my_nn <- list(
-  # predictor variables
-  input = X,
-  # weights for layer 1
-  weights1 = rand_matrix,
-  # weights for layer 2
-  weights2 = matrix(runif(4), ncol = 1),
-  # actual observed
-  y = y,
-  # stores the predicted outcome
-  output = matrix(
-    rep(0, times = 4),
-    ncol = 1
-  )
-)
-
-```
-
-```{r functions}
-
-#' the activation function
-sigmoid <- function(x) {
-  1.0 / (1.0 + exp(-x))
-}
-
-#' the derivative of the activation function
-sigmoid_derivative <- function(x) {
-  x * (1.0 - x)
-}
-
-loss_function <- function(nn) {
-  sum((nn$y - nn$output) ^ 2)
-}
-
-```
-
-```{r back/forward propogation}
-
-feedforward <- function(nn) {
-
-  nn$layer1 <- sigmoid(nn$input %*% nn$weights1)
-  nn$output <- sigmoid(nn$layer1 %*% nn$weights2)
-
-  nn
-}
-
-backprop <- function(nn) {
-
-  # application of the chain rule to find derivative of the loss function with 
-  # respect to weights2 and weights1
-  d_weights2 <- (
-    t(nn$layer1) %*%
-    # `2 * (nn$y - nn$output)` is the derivative of the sigmoid loss function
-    (2 * (nn$y - nn$output) *
-    sigmoid_derivative(nn$output))
-  )
-
-  d_weights1 <- ( 2 * (nn$y - nn$output) * sigmoid_derivative(nn$output)) %*% 
-    t(nn$weights2)
-  d_weights1 <- d_weights1 * sigmoid_derivative(nn$layer1)
-  d_weights1 <- t(nn$input) %*% d_weights1
+predict <- function(X, num, parameters) {
   
-  # update the weights using the derivative (slope) of the loss function
-  nn$weights1 <- nn$weights1 + d_weights1
-  nn$weights2 <- nn$weights2 + d_weights2
-
-  nn
+  img <- matrix(X[,num], 784, 1)
+  
+  W1 <- parameters[["W1"]]
+  b1 <- parameters[["b1"]]
+  W2 <- parameters[["W2"]]
+  b2 <- parameters[["b2"]]
+  
+  A1 <- linear_activation_fwd(img, W1, b1, activation = "relu")
+  A2 <- linear_activation_fwd(A1[["A"]], W2, b2, activation = "sigmoid")
+  
+  return(A2[["A"]])
+  
 }
 
-```
+test <- matrix(X[,16000], 784, 1)
+test_y <- y[,16000]
 
-```{r training}
+prediction <- predict(X, 16000, parameters)
 
-# number of times to perform feedforward and backpropagation
-n <- 1500
-
-# data frame to store the results of the loss function.
-# this data frame is used to produce the plot in the 
-# next code chunk
-loss_df <- data.frame(
-  iteration = 1:n,
-  loss = vector("numeric", length = n)
-)
-
-for (i in seq_len(1500)) {
-  my_nn <- feedforward(my_nn)
-  my_nn <- backprop(my_nn)
-
-  # store the result of the loss function.  We will plot this later
-  loss_df$loss[i] <- loss_function(my_nn)
-}
-
-# print the predicted outcome next to the actual outcome
-data.frame(
-  "Predicted" = round(my_nn$output, 3),
-  "Actual" = y
-)
+View(prediction)
+View(test_y)
 
 ```
