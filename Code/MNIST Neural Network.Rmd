@@ -477,7 +477,7 @@ Depending on the number of iterations given, this can take quite a bit of time d
 
 ```{r running model}
 
-parameters_testing <- two_layer_model(X, y, layers_dimensions, .0075, 100, TRUE)
+parameters <- two_layer_model(X, y, layers_dimensions, .0075, 3000, TRUE)
 
 ```
 
@@ -486,16 +486,19 @@ As we do not currently have a separate testing set, this bit of code just gives 
 It takes the inputs:
 
 * X --- image data from training set
+* Y --- label matrix from training set
 * num --- number between 0 and 42000 to select an image
 * parameters --- tuned list of parameters (output of the two_layer_model function)
 
-and returns the probability vector of the labels 0-9 which should then be compared with the actual label vector *test_y*
+and returns the prediction and the true label
 
 ```{r testing NN}
 
-predict <- function(X, num, parameters) {
+#function to show models prediction and the true label
+predict <- function(X, Y, num, parameters) {
   
   img <- matrix(X[,num], 784, 1)
+  truevec <- y[,num]
   
   W1 <- parameters[["W1"]]
   b1 <- parameters[["b1"]]
@@ -505,18 +508,16 @@ predict <- function(X, num, parameters) {
   A1 <- linear_activation_fwd(img, W1, b1, activation = "relu")
   A2 <- linear_activation_fwd(A1[["A"]], W2, b2, activation = "sigmoid")
   
-  return(A2[["A"]])
+  predvec <- A2[["A"]]
+  pred <- which(predvec == max(predvec)) - 1
+  true <- which(truevec == max(truevec)) - 1
+  acc <- ifelse(pred == true, "correctly", "incorrectly")
+  
+  print(paste0("The Neural Network ", acc, " predicted ", pred, " and the true value is ", true))
   
 }
 
-#set this to any num between 0 and 42000 to see what the model predicts
-num <- 16000
+predict(X, Y, 17000, parameters)
 
-test_y <- y[,num]
-
-prediction <- predict(X, num, parameters_testing)
-
-prediction
-test_y
 
 ```
