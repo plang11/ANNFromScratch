@@ -9,9 +9,17 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# MNIST Neural Network in Base R
+
+The following code shows how to create a neural network and train it. The NN that will be created has 3 layers:  
+
+* Input Layer - 784 units (28*28=784 pixels per handwritten digit)
+* Hidden Layer - 32 units (arbitrarily chosen, can be tweaked)
+* Output Layer - 10 units (represents the output classes, numbers from 0-9)
+
 ```{r loading packages}
 
-#onehot encoding
+#only packages required are to one-hot encode the label vector, nothing to do with the actual neural network
 library(data.table) 
 library(mltools)
 
@@ -19,14 +27,22 @@ library(mltools)
 
 ```{r importing data}
 
+#importing data
+#make sure you have unzipped the data file and placed it in the "Data" folder for this to work
 train <- read.csv("../Data/train.csv")
 
 ```
+
+## Data Preprocessing
+The first step is to split the images from the label vector.  
+Then we must transform our image data into the shape our neural network will expect *(n_pixels, n_examples)*   
+The final data preprocessing step is to one hot encode the label vector *(n_examples, 1)* to a *(n_classes, n_examples)* matrix
 
 ```{r splitting into X and y}
 
 #reshaping X into shape (n_pixels, n_examples), it was previously (n_examples, n_pixels)
 X <- t(as.matrix(train[,-1]))/255
+#removing column names
 X <- matrix(X, 784, 42000)
 
 #one hot encoding y as there are 10 possible classes (digits) and our output layer will contain 10 units, also reshaping to be (n_classes, n_examples)
@@ -38,6 +54,33 @@ y <- t(as.matrix(y))
 y <- matrix(y, 10, 42000)
 
 ```
+
+## Creating Functions to Build and Train the NN
+This next section of code involves creating all of the necessary functions to build and train our neural network. They go as follows:  
+
+* Parameter initialization 
+* Forward propogation 
+    + Linear forward step
+    + Activation functions (sigmoid and ReLU)   
+* Loss function 
+* Backward propogation 
+    + Linear backward step 
+    + Activation gradients (sigmoid and ReLU) 
+* Parameter updating
+
+### Initializing Parameters
+This function takes inputs:  
+
+* n_x --- size of the input layer (n_pixels)  
+* n_h --- size of the hidden layer (32)  
+* n_y --- size of the output layer (n_classes)
+
+and creates the list *parameters* that contains:  
+
+* W1 --- weight matrix of shape (n_h, n_x)  
+* b1 --- bias vector of shape (n_h, 1)  
+* W2 --- weight matrix of shape (n_y, n_h)  
+* b2 --- bias vector of shape (n_y, 1)  
 
 ```{r initializing parameters}
 
@@ -73,6 +116,18 @@ initialize_parameters <- function(n_x, n_h, n_y) {
 
 ```
 
+### Linear Forward Propogation
+This function takes inputs:  
+
+* A --- activations from previous layer (or input data) of shape (size of previous layer, n_examples)
+* W --- weight matrix of shape (size of current layer, size of previous layer)
+* b --- bias vector of shape (size of current layer, 1)  
+
+and returns the list *Z_and_cache* which contains:
+
+* Z --- output of the linear function $Z^{[l]} = W^{[l]}*A^{[l-1]}+b^{[l]}$
+* cache --- a list containing the inputs, $A, W, b$ to make back propogation more efficient
+
 ```{r linear forward propogation}
 
 linear_fwd <- function(A, W, b) {
@@ -96,6 +151,16 @@ linear_fwd <- function(A, W, b) {
 }
 
 ```
+
+### Sigmoid and ReLU Functions
+These functions take input $Z$, perform a non-linear "activation" function, and return a list containing: 
+
+* A --- the activation values
+* cache --- the input $Z$ stored to compute back propogation efficiently
+
+The sigmoid function is $\sigma(Z) = \sigma(W A + b) = \frac{1}{ 1 + e^{-(W A + b)}}$
+
+The Rectified Linear Unit (ReLU) function is $A = RELU(Z) = max(0, Z)$
 
 ```{r sigmoid and relu functions}
 
@@ -127,6 +192,15 @@ relu_func <- function(Z) {
 
 ```
 
+### Linear Activation Forward
+This function combines the Linear Forward Propogation function and the activation functions (sigmoid and ReLU) and returns the list *A_and_cache* containing:  
+
+* A --- output of the activation function
+* linear_cache --- cache from the linear forward step
+* activation_cache --- cache from the activation function
+
+The equation to produce $A^{[l]}$ here is $A^{[l]} = g(Z^{[l]}) = g(W^{[l]}*A^{[l-1]}+b^{[l]})$ where $g$ is either the sigmoid or ReLU activation function.
+
 ```{r linear-activation forward propogation}
 
 linear_activation_fwd <- function(A_prev, W, b, activation) {
@@ -147,6 +221,18 @@ linear_activation_fwd <- function(A_prev, W, b, activation) {
 
 ```
 
+### Cost Function
+The cost function takes inputs: 
+
+* AL --- probability matrix of label predictions of shape (n_classes, n_examples)
+* Y --- true label matrix of shape (n_classes, n_examples)  
+
+and returns the cross-entropy cost.
+
+The cross-entropy cost $J$ is computed using the following formula: 
+
+$J = -\frac{1}{m} \sum\limits_{i = 1}^{m} (y^{(i)}\log\left(a^{[L] (i)}\right) + (1-y^{(i)})\log\left(1- a^{[L](i)}\right))$
+
 ```{r cost function}
 
 cost_func <- function(AL, Y) {
@@ -161,6 +247,24 @@ cost_func <- function(AL, Y) {
 } 
 
 ```
+
+### Linear Backward Function
+This function takes inputs: 
+
+* dZ --- gradient of the cost with respect to the linear output of the current layer $dZ^{[l]} = \frac{\partial \mathcal{L} }{\partial Z^{[l]}}$
+* A_and_cache --- list containing *A_prev, W, b* from forward propogation in the current layer  
+
+computes the derivatives $dA^{[l]}, dW^{[l]}, db^{[l]}$ and returns the list *gradients* containing:
+
+* dA_prev --- gradient of the cost with respect to the activation of the previous layer with same shape as *A_prev*
+* dW --- gradient of the cost with respect to W of current layer with same shape as *W*
+* db --- gradient of the cost with respect to b of current layer with same shape as *b*
+
+using the following formulas:  
+
+$dA^{[l-1]} = \frac{\partial \mathcal{L} }{\partial A^{[l-1]}} = W^{[l] T} dZ^{[l]}$  
+$dW^{[l]} = \frac{\partial \mathcal{L} }{\partial W^{[l]}} = \frac{1}{m} dZ^{[l]} A^{[l-1] T}$  
+$db^{[l]} = \frac{\partial \mathcal{L} }{\partial b^{[l]}} = \frac{1}{m} \sum\limits_{i = 1}^{m} dZ^{[l](i)}$
 
 ```{r linear backward}
 
@@ -187,6 +291,16 @@ linear_backward <- function(dZ, A_and_cache) {
 }
 
 ```
+
+### Activation Derivatives
+These functions compute the derivatives of the activation functions with inputs: 
+
+* dA --- post-activation gradient for current layer
+* cache --- either linear or activation cache that was stored for backward propogation  
+
+to return *dZ*
+
+The computation can be represented as $dZ^{[l]} = dA^{[l]} * g'(Z^{[l]})$ where $g(.)$ is the activation function
 
 ```{r backwards sigmoid and relu}
 
@@ -215,6 +329,19 @@ relu_backward <- function(dA, cache) {
 
 ```
 
+### Linear Activation Backward
+This function impliments back propogation for the linear->activation layer with inputs:
+
+* dA --- post-activation gradient for current layer
+* A_and_cache --- list containing linear_cache and activation_cache
+* activation --- which activation to use for this layer ("sigmoid" or "relu")  
+
+and returns the list *gradients* containing:
+
+* dA_prev --- gradient of the cost with respect to the activation of the previous layer with same shape as *A_prev*
+* dW --- gradient of the cost with respect to W of current layer with same shape as *W*
+* db --- gradient of the cost with respect to b of current layer with same shape as *b*
+
 ```{r linear activation backward}
 
 linear_activation_back <- function(dA, A_and_cache, activation) {
@@ -242,6 +369,21 @@ linear_activation_back <- function(dA, A_and_cache, activation) {
 
 ```
 
+### Updating the Parameters
+This function updates the parameters of the model using gradient descent. It takes inputs: 
+
+* parameters --- list of parameters *W1, b1, W2, b2*
+* l1_gradients --- gradients from first NN layer
+* l2_gradients --- gradients from second NN layer
+* learning_rate --- the $\alpha$ you wish to use  
+
+and returns the list *parameters* containing the updated parameters.
+
+Gradient descent works using the following equations:
+
+$W^{[l]} = W^{[l]} - \alpha \text{ } dW^{[l]}$  
+$b^{[l]} = b^{[l]} - \alpha \text{ } db^{[l]}$  
+
 ```{r updating parameters}
 
 update_parameters <- function(parameters, l1_gradients, l2_gradients, learning_rate) {
@@ -257,6 +399,21 @@ update_parameters <- function(parameters, l1_gradients, l2_gradients, learning_r
 }
 
 ```
+
+### Two Layer Model Function
+This function combines all previous functions into a NN function. The inputs are:
+
+* X --- image data from training set
+* Y --- label matrix from training set
+* layers_dimensions --- list containing *n_x, n_h, n_y*  
+
+and has the tunable parameters of:
+
+* learning_rate --- the learning rate or $\alpha$ you want to use
+* num_iterations --- number of iterations you want the model to run through while training
+* print_cost --- whether or not to print the cost after every 100 iterations
+
+This returns the list *parameters* which contains the tuned parameters *W1, b1, W2, b2*
 
 ```{r two layer model}
 
@@ -315,13 +472,24 @@ two_layer_model <- function(X, Y, layers_dimensions, learning_rate = .0075, num_
 
 ```
 
-
+## Running the Model
+Depending on the number of iterations given, this can take quite a bit of time due to the huge amount of training data we are giving it
 
 ```{r running model}
 
-parameters <- two_layer_model(X, y, layers_dimensions, .0075, 3000, TRUE)
+parameters_testing <- two_layer_model(X, y, layers_dimensions, .0075, 100, TRUE)
 
 ```
+
+## Testing the NN
+As we do not currently have a separate testing set, this bit of code just gives you the opportunity to see the predicted versus actual label for a given image in the training set was.  
+It takes the inputs:
+
+* X --- image data from training set
+* num --- number between 0 and 42000 to select an image
+* parameters --- tuned list of parameters (output of the two_layer_model function)
+
+and returns the probability vector of the labels 0-9 which should then be compared with the actual label vector *test_y*
 
 ```{r testing NN}
 
@@ -341,12 +509,14 @@ predict <- function(X, num, parameters) {
   
 }
 
-test <- matrix(X[,16000], 784, 1)
-test_y <- y[,16000]
+#set this to any num between 0 and 42000 to see what the model predicts
+num <- 16000
 
-prediction <- predict(X, 16000, parameters)
+test_y <- y[,num]
 
-View(prediction)
-View(test_y)
+prediction <- predict(X, num, parameters_testing)
+
+prediction
+test_y
 
 ```
